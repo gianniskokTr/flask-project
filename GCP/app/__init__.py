@@ -1,9 +1,7 @@
-from flask import Flask, jsonify
+from flask import Flask
 from flask_smorest import Api
 from flask_jwt_extended import JWTManager
 from google.appengine.api import wrap_wsgi_app
-
-
 
 def create_app():
     app = Flask(__name__)
