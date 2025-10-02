@@ -5,6 +5,7 @@ from google.appengine.api import wrap_wsgi_app
 
 def create_app():
     app = Flask(__name__)
+
     app.config["PROPAGATE_EXCEPTIONS"] = True
     app.config["API_TITLE"] = "Stores REST API"
     app.config["API_VERSION"] = "v1"
@@ -25,7 +26,4 @@ def create_app():
 
     return app
 
-
 from app import models
-
-

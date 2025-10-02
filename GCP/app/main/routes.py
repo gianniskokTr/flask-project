@@ -1,17 +1,58 @@
+import logging
+
 from flask import jsonify, request
 from google.appengine.ext import ndb
 
 from app.models import StoreModel, ItemModel
 from app.main import bp
-from app.main.item_service import consume_item_tx
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+
+logger = logging.getLogger(__name__)
+
+@bp.route("/store", methods=["POST"])
+def create_store():
+    data = request.get_json()
+    if not data:
+        return jsonify({"message": 'Invalid JSON'}), 400
+
+    name = data.get("name")
+    description = data.get("description")
+
+    if not name:
+        return jsonify({"message": "Store name is required"}), 400
+
+    store = StoreModel(name=name, description=description)
+    try:
+        key = store.put()
+        return jsonify({"model": key.kind(), "key_id": key.id()}), 201
+    except:
+        return jsonify({"message": 'Error occurred while creating store'}), 500
 
 @bp.route("/store/<int:store_id>", methods=['GET'])
 def get_store(store_id):
-    store_key = ndb.Key('StoreModel', store_id)
+    store_key = ndb.Key(StoreModel, store_id)
     store = store_key.get()
     if store is None:
-        return {"message": 'Invalid Store Id'}, 404
-    items = ItemModel.query(ItemModel.store == store_key).fetch()
+        return jsonify({"message": 'Invalid Store Id'}), 404
+
+    page_size = request.args.get("page_size", default=2, type=int)
+    cursor_str = request.args.get("cursor")
+    reverse = request.args.get("reverse", default="false").lower() == "true"
+
+    cursor = ndb.Cursor(urlsafe=cursor_str) if cursor_str else None
+
+    query = ItemModel.query(ItemModel.store == store_key)
+
+    if reverse:
+        query = query.order(-ItemModel.created_at)
+    else:
+        query = query.order(ItemModel.created_at)
+    items, next_cursor, more = query.fetch_page(page_size, start_cursor=cursor)
+
     results = []
     for item in items:
         item_dict = item.to_dict()
@@ -20,62 +61,26 @@ def get_store(store_id):
         results.append(item_dict)
     store_dict = store.to_dict()
     store_dict["items"] = results
+    store_dict['pagination'] = {
+        "next_cursor": next_cursor.urlsafe().decode("utf-8") if more and next_cursor else None,
+        "prev_cursor": cursor.urlsafe().decode("utf-8") if cursor else None,
+        "has_more": more,
+    }
     return jsonify(store_dict)
 
-@bp.route("/store", methods=["POST"])
-def create_store():
+@bp.route("/store/<int:store_id>/description", methods=["PATCH"])
+def update_store_description(store_id):
     data = request.get_json()
     if not data:
         return {"message": 'Invalid JSON'}, 400
-
-    name = data.get("name")
     description = data.get("description")
-
-    if not name:
-        return {"message": "Store name is required"}, 400
-
-    store = StoreModel(name=name, description=description)
-    try:
-        key = store.put()
-        return {"model": key.kind(), "key_id": key.id()}, 201
-    except:
-        return {"message": 'Error occurred while creating store'}, 500
-
-@bp.route("/update_store_description", methods=["POST"])
-def update_store_description():
-    data = request.get_json()
-    if not data:
-        return {"message": 'Invalid JSON'}, 400
-    store_id = data.get("store_id")
-    description = data.get("description")
-
-    if not store_id:
-        return {"message": 'store_id is required '}, 400
-
-    store = ndb.Key('StoreModel', store_id).get()
-    if store is None:
-        return {"message": 'Invalid store_id'}, 404
-
-    store.description = description
-    store.put()
-    store_dict = store.to_dict()
-    return jsonify(store_dict)
-
-@bp.route("/item/<int:item_id>", methods=['GET'])
-def get_item(item_id):
-    item = ndb.Key('ItemModel', item_id).get()
-    if item is None:
-        return {"message": 'Invalid Item Id'}, 404
-
-    item_dict = item.to_dict()
-    item_dict["store"] = item.store.id()
-    return jsonify(item_dict)
+    return StoreModel.update_description(store_id, description)
 
 @bp.route("/item", methods=["POST"])
 def create_item():
     data = request.get_json()
     if not data:
-        return {"message": 'Invalid JSON'}, 400
+        return jsonify({"message": 'Invalid JSON'}), 400
 
     name = data.get("name")
     description = data.get("description")
@@ -84,16 +89,16 @@ def create_item():
     quantity = data.get("quantity")
 
     if not name:
-        return {"message": "Item name is required"}, 400
+        return jsonify({"message": "Item name is required"}), 400
     if not price:
-        return {"message": "Item price is required"}, 400
+        return jsonify({"message": "Item price is required"}), 400
     if not store_id:
-        return {"message": "A store_id is required"}, 400
+        return jsonify({"message": "A store_id is required"}), 400
     if not quantity:
         quantity = 0
-    store_key = ndb.Key('StoreModel', store_id)
+    store_key = ndb.Key(StoreModel, store_id)
     if store_key.get() is None:
-        return {"message": "Invalid store_id"}, 404
+        return jsonify({"message": "Invalid store_id"}), 404
 
     try:
         item = ItemModel(
@@ -104,74 +109,45 @@ def create_item():
             quantity=quantity
         )
         key = item.put()
-        return {"model": key.kind(), "key_id": key.id()}, 201
+        return jsonify({"model": key.kind(), "key_id": key.id()}), 201
     except:
-        return {"message": 'Error occurred while creating item'}, 500
+        return jsonify({"message": 'Error occurred while creating item'}), 500
 
-@bp.route("/buy_item", methods=["POST"])
-def buy_single_item():
-    data = request.get_json()
-    if not data:
-        return {"message": 'Invalid JSON'}, 400
-    item_id = data.get("item_id")
-
-    if not item_id:
-        return {"message": 'item_id is required '}, 400
-
-    item = ndb.Key('ItemModel', item_id).get()
+@bp.route("/item/<int:item_id>", methods=['GET'])
+def get_item(item_id):
+    item = ndb.Key(ItemModel, item_id).get()
     if item is None:
-        return {"message": 'Invalid item_id'}, 404
+        return jsonify({"message": 'Invalid Item Id'}), 404
 
-    try:
-        item = consume_item_tx(item_id)
-        item_dict = item.to_dict()
-        item_dict["store"] = item.store.id()
-        return jsonify(item_dict)
-    except ValueError as e:
-        return {"message": str(e)}, 400
+    item_dict = item.to_dict()
+    item_dict["store"] = item.store.id()
+    return jsonify(item_dict)
 
+@bp.route("/item/<int:item_id>/buy", methods=["POST"])
+def buy_single_item(item_id):
+    item = ndb.Key(ItemModel, item_id).get()
+    if item is None:
+        return jsonify({"message": 'Invalid item_id'}), 404
 
-@bp.route("/update_item_quantity", methods=["POST"])
-def update_item_quantity():
+    return ItemModel.consume_item_tx(item_id)
+
+@bp.route("/item/<int:item_id>/quantity", methods=["PATCH"])
+def update_item_quantity(item_id):
     data = request.get_json()
     if not data:
         return {"message": 'Invalid JSON'}, 400
-    item_id = data.get("item_id")
     quantity = data.get("quantity")
 
-    if not item_id:
-        return {"message": 'item_id is required '}, 400
+    if not quantity or quantity < 0:
+        return jsonify({"message": 'Invalid quantity'}), 400
 
-    if not quantity or quantity <= 0:
-        return {"message": 'Invalid quantity'}, 400
+    return ItemModel.update_quantity(item_id, quantity)
 
-    item = ndb.Key('ItemModel', item_id).get()
-    if item is None:
-        return {"message": 'Invalid item_id'}, 404
-
-    item.quantity = quantity
-    item.put()
-    item_dict = item.to_dict()
-    item_dict["store"] = item.store.id()
-    return jsonify(item_dict)
-
-@bp.route("/update_item_description", methods=["POST"])
-def update_item_description():
+@bp.route("/item/<int:item_id>/description", methods=["PATCH"])
+def update_item_description(item_id):
     data = request.get_json()
     if not data:
         return {"message": 'Invalid JSON'}, 400
-    item_id = data.get("item_id")
     description = data.get("description")
 
-    if not item_id:
-        return {"message": 'item_id is required '}, 400
-
-    item = ndb.Key('ItemModel', item_id).get()
-    if item is None:
-        return {"message": 'Invalid item_id'}, 404
-
-    item.description = description
-    item.put()
-    item_dict = item.to_dict()
-    item_dict["store"] = item.store.id()
-    return jsonify(item_dict)
+    return ItemModel.update_description(item_id, description)

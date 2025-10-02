@@ -1,0 +1,10 @@
+indexes:
+- kind: ItemModel
+  properties:
+    - name: store
+    - name: created_at
+- kind: ItemModel
+  properties:
+    - name: store
+    - name: created_at
+      direction: desc
