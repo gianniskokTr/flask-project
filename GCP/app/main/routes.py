@@ -175,8 +175,3 @@ def update_item_description():
     item_dict = item.to_dict()
     item_dict["store"] = item.store.id()
     return jsonify(item_dict)
-
-
-
-
-
