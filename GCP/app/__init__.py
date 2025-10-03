@@ -1,27 +1,30 @@
 from flask import Flask, jsonify
-from flask_smorest import Api
+from flask_login import LoginManager
 from flask_jwt_extended import JWTManager
 from google.appengine.api import wrap_wsgi_app
+
 from app import exceptions
+from app.extentions import init_extensions
+
+login_manager = LoginManager()
+jwt = JWTManager()
+login_manager.login_view = 'auth.login'
 
 def create_app():
     app = Flask(__name__)
 
     app.config["PROPAGATE_EXCEPTIONS"] = True
-    app.config["API_TITLE"] = "Stores REST API"
-    app.config["API_VERSION"] = "v1"
-    app.config["OPENAPI_VERSION"] = "3.0.3"
-    app.config["OPENAPI_URL_PREFIX"] = "/"
-    app.config["OPENAPI_SWAGGER_UI_PATH"] = "/swagger-ui"
-    app.config["OPENAPI_SWAGGER_UI_URL"] = "https://cdn.jsdelivr.net/npm/swagger-ui-dist/"
     app.config["JWT_SECRET_KEY"] = "test_key"
+    app.config['SECRET_KEY'] = 'ti-egine-kwstaki-se-goustarei-i-xwriatisa'
 
-    api = Api(app)
-    jwt = JWTManager(app)
+    login_manager.init_app(app)
+    jwt.init_app(app)
 
-    from app.main import bp as main_bp
+    from app.core import bp as main_bp
+    from app.auth import bp as auth_bp
 
     app.register_blueprint(main_bp)
+    app.register_blueprint(auth_bp)
 
     @app.errorhandler(Exception)
     def handle_generic_exception(error):
@@ -32,4 +35,3 @@ def create_app():
     return app
 
 from app import models
-

@@ -12,3 +12,6 @@ class OutOfStorageError(Exception):
 
 class StoreNotFoundError(Exception):
     pass
+
+class UserAlreadyExistsError(Exception):
+    pass
