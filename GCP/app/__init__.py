@@ -1,7 +1,8 @@
-from flask import Flask
+from flask import Flask, jsonify
 from flask_smorest import Api
 from flask_jwt_extended import JWTManager
 from google.appengine.api import wrap_wsgi_app
+from app import exceptions
 
 def create_app():
     app = Flask(__name__)
@@ -22,8 +23,13 @@ def create_app():
 
     app.register_blueprint(main_bp)
 
+    @app.errorhandler(Exception)
+    def handle_generic_exception(error):
+        return jsonify({"message": "Internal server error"}), 500
+
     app.wsgi_app = wrap_wsgi_app(app.wsgi_app)
 
     return app
 
 from app import models
+

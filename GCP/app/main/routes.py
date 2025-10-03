@@ -1,17 +1,16 @@
-import logging
-
 from flask import jsonify, request
 from google.appengine.ext import ndb
 
-from app.models import StoreModel, ItemModel
+from app.models import StoreModel, ItemModel, logger
 from app.main import bp
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+from app.exceptions import (
+    ItemNotFoundError,
+    ItemSoldOutError,
+    OutOfStorageError,
+    StoreNotFoundError,
+    InvalidItemQuantity
 )
 
-logger = logging.getLogger(__name__)
 
 @bp.route("/store", methods=["POST"])
 def create_store():
@@ -74,7 +73,11 @@ def update_store_description(store_id):
     if not data:
         return {"message": 'Invalid JSON'}, 400
     description = data.get("description")
-    return StoreModel.update_description(store_id, description)
+    try:
+        store = StoreModel.update_description(store_id, description)
+        return jsonify(store.to_dict_extended(key_attribute=None)), 200
+    except StoreNotFoundError as e:
+        return jsonify({"message": str(e)}), 404
 
 @bp.route("/item", methods=["POST"])
 def create_item():
@@ -117,7 +120,7 @@ def create_item():
 def get_item(item_id):
     item = ndb.Key(ItemModel, item_id).get()
     if item is None:
-        return jsonify({"message": 'Invalid Item Id'}), 404
+        return jsonify({"message": 'Invalid item Id'}), 404
 
     item_dict = item.to_dict()
     item_dict["store"] = item.store.id()
@@ -125,11 +128,13 @@ def get_item(item_id):
 
 @bp.route("/item/<int:item_id>/buy", methods=["POST"])
 def buy_single_item(item_id):
-    item = ndb.Key(ItemModel, item_id).get()
-    if item is None:
-        return jsonify({"message": 'Invalid item_id'}), 404
-
-    return ItemModel.consume_item_tx(item_id)
+    try:
+        item = ItemModel.consume_item_tx(item_id)
+        return jsonify(item.to_dict_extended(key_attribute='store')), 200
+    except ItemNotFoundError as e:
+        return jsonify({"message": str(e)}), 404
+    except ItemSoldOutError as e:
+        return jsonify({"message": str(e)}), 400
 
 @bp.route("/item/<int:item_id>/quantity", methods=["PATCH"])
 def update_item_quantity(item_id):
@@ -137,11 +142,13 @@ def update_item_quantity(item_id):
     if not data:
         return {"message": 'Invalid JSON'}, 400
     quantity = data.get("quantity")
-
-    if not quantity or quantity < 0:
-        return jsonify({"message": 'Invalid quantity'}), 400
-
-    return ItemModel.update_quantity(item_id, quantity)
+    try:
+        item = ItemModel.update_quantity(item_id, quantity)
+        return jsonify(item.to_dict_extended(key_attribute='store')), 200
+    except ItemNotFoundError as e:
+        return jsonify({"message": str(e)}), 404
+    except InvalidItemQuantity as e:
+        return jsonify({"message": str(e)}), 404
 
 @bp.route("/item/<int:item_id>/description", methods=["PATCH"])
 def update_item_description(item_id):
@@ -149,5 +156,8 @@ def update_item_description(item_id):
     if not data:
         return {"message": 'Invalid JSON'}, 400
     description = data.get("description")
-
-    return ItemModel.update_description(item_id, description)
+    try:
+        item = ItemModel.update_description(item_id, description)
+        return jsonify(item.to_dict_extended(key_attribute='store')), 200
+    except ItemNotFoundError as e:
+        return jsonify({"message": str(e)}), 404
