@@ -1,9 +1,10 @@
 from google.appengine.ext import ndb
 from typing import Optional, Union, List
-from app import login_manager
 from flask_login import UserMixin
+from werkzeug.security import generate_password_hash, check_password_hash
 import logging
 
+from app import login
 from app.exceptions import (
     ItemNotFoundError,
     ItemSoldOutError,
@@ -188,12 +189,16 @@ class User(UserMixin, ndb.Model, SerializationMixin):
 
     def to_dict(self):
         return {
+            "id": self.key.id(),
             "username": self.username,
             "email": self.email,
             "created_at": self.created_at,
             "is_active": self.is_active,
             "is_admin": self.is_admin
         }
+
+    def get_id(self):
+        return self.key.id()
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -224,6 +229,6 @@ class User(UserMixin, ndb.Model, SerializationMixin):
         key = user.put()
         return key
 
-@login_manager.user_loader
+@login.user_loader
 def load_user(user_id):
     return User.get_by_id(int(user_id))

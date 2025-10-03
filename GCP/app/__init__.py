@@ -4,11 +4,10 @@ from flask_jwt_extended import JWTManager
 from google.appengine.api import wrap_wsgi_app
 
 from app import exceptions
-from app.extentions import init_extensions
 
-login_manager = LoginManager()
+login = LoginManager()
 jwt = JWTManager()
-login_manager.login_view = 'auth.login'
+login.login_view = 'auth.login'
 
 def create_app():
     app = Flask(__name__)
@@ -17,7 +16,7 @@ def create_app():
     app.config["JWT_SECRET_KEY"] = "test_key"
     app.config['SECRET_KEY'] = 'ti-egine-kwstaki-se-goustarei-i-xwriatisa'
 
-    login_manager.init_app(app)
+    login.init_app(app)
     jwt.init_app(app)
 
     from app.core import bp as main_bp
@@ -28,7 +27,7 @@ def create_app():
 
     @app.errorhandler(Exception)
     def handle_generic_exception(error):
-        return jsonify({"message": "Internal server error"}), 500
+        return jsonify({"message": str(error)}), 500
 
     app.wsgi_app = wrap_wsgi_app(app.wsgi_app)
 

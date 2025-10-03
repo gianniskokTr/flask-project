@@ -1,5 +1,6 @@
 from flask import jsonify, request
 from google.appengine.ext import ndb
+from flask_login import login_required
 
 from app.models import StoreModel, ItemModel, logger
 from app.core import bp
@@ -14,6 +15,7 @@ from app.exceptions import (
 STORE_ATTRIBUTE = 'store'
 
 @bp.route("/store", methods=["POST"])
+@login_required
 def create_store():
     """
     Args:
@@ -79,6 +81,7 @@ def get_store(store_id):
         return jsonify({"message": str(e)}), 404
 
 @bp.route("/store/<int:store_id>/description", methods=["PATCH"])
+@login_required
 def update_store_description(store_id: int):
     """
     Args:
@@ -102,6 +105,7 @@ def update_store_description(store_id: int):
         return jsonify({"message": str(e)}), 404
 
 @bp.route("/item", methods=["POST"])
+@login_required
 def create_item():
     """
     Args:
@@ -169,6 +173,7 @@ def get_item(item_id: int):
     return jsonify(item_dict)
 
 @bp.route("/item/<int:item_id>/buy", methods=["POST"])
+@login_required
 def buy_single_item(item_id: int):
     """
     Args:
@@ -192,6 +197,7 @@ def buy_single_item(item_id: int):
         return jsonify({"message": str(e)}), 400
 
 @bp.route("/item/<int:item_id>/quantity", methods=["PATCH"])
+@login_required
 def update_item_quantity(item_id: int):
     """
         Update item quantity.
@@ -222,6 +228,7 @@ def update_item_quantity(item_id: int):
         return jsonify({"message": str(e)}), 404
 
 @bp.route("/item/<int:item_id>/description", methods=["PATCH"])
+@login_required
 def update_item_description(item_id: int):
     """
         Update item description.
