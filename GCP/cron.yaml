@@ -1,0 +1,5 @@
+cron:
+  - description: "update events cache"
+    url: /tasks/update_cache
+    schedule: every 6 hours
+    timezone: Etc/UTC

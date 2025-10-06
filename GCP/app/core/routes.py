@@ -1,6 +1,6 @@
 from flask import jsonify, request
 from google.appengine.ext import ndb
-from flask_login import login_required
+from flask_login import login_required, current_user
 
 from app.models import StoreModel, ItemModel, logger
 from app.core import bp
@@ -11,6 +11,9 @@ from app.exceptions import (
     StoreNotFoundError,
     InvalidItemQuantity
 )
+
+from app.services.bigquery_service import log_item_consumed
+from app.services.cache_service import get_cached_events, refresh_cache
 
 STORE_ATTRIBUTE = 'store'
 
@@ -190,6 +193,11 @@ def buy_single_item(item_id: int):
     """
     try:
         item = ItemModel.consume_item_tx(item_id)
+        log_item_consumed(
+            user_id=current_user.get_id(),
+            item_id=item.key.id(),
+            store_id=item.store.id()
+        )
         return jsonify(item.to_dict_extended(key_attribute=STORE_ATTRIBUTE)), 200
     except ItemNotFoundError as e:
         return jsonify({"message": str(e)}), 404
@@ -255,3 +263,15 @@ def update_item_description(item_id: int):
         return jsonify(item.to_dict_extended(key_attribute=STORE_ATTRIBUTE)), 200
     except ItemNotFoundError as e:
         return jsonify({"message": str(e)}), 404
+
+
+@bp.route("/events", methods=["GET"])
+def get_events():
+    events = get_cached_events()
+    return jsonify(events)
+
+# Endpoint for cron
+@bp.route("/tasks/update_cache", methods=["GET"])
+def update_cache_task():
+    events = refresh_cache()
+    return jsonify({"status": "cache updated", "count": len(events)})
