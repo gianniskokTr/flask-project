@@ -4,7 +4,6 @@ from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 import logging
 
-from app import login
 from app.exceptions import (
     ItemNotFoundError,
     ItemSoldOutError,
@@ -23,23 +22,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class SerializationMixin:
-    def to_dict_extended(self, key_attribute: Optional[str]) -> dict:
-        """
-            Converts the model to a dictionary, with the option to include a key attribute.
-
-            If key_attribute is provided, and the attribute is an ndb.Key, it will be included in the
-            returned dictionary with its id() as the value.
-
-            :param key_attribute: The name of the key attribute to include
-            :type key_attribute: Optional[str]
-            :return: A dictionary representation of the model
-            :rtype: dict
-        """
+    def to_dict_extended(self) -> dict:
         data = self.to_dict()
-        if key_attribute:
-            key_obj = getattr(self, key_attribute, None)
-            if isinstance(key_obj, ndb.Key):
-                data[key_attribute] = key_obj.id()
+        for attr_name, attr_value in data.items():
+            if isinstance(attr_value, ndb.Key):
+                data[attr_name] = attr_value.id()
         return data
 
 class StoreModel(ndb.Model, SerializationMixin):
@@ -131,7 +118,7 @@ class ItemModel(ndb.Model, SerializationMixin):
 
     @classmethod
     @ndb.transactional()
-    def update_description(cls, item_id: int, description: Optional[str]) -> Union['ItemModel', None]:
+    def update_item(cls, item_id: int, description: Optional[str], quantity: Optional[int]) -> Union['ItemModel', None]:
         """
             Updates the description of an item.
 
@@ -148,33 +135,8 @@ class ItemModel(ndb.Model, SerializationMixin):
         item = ndb.Key(cls, item_id).get()
         if item is None:
             raise ItemNotFoundError('Invalid item id')
-        item.description = description
-        item.put()
-        return item
-
-    @classmethod
-    @ndb.transactional()
-    def update_quantity(cls, item_id: int, quantity: int) -> Union['ItemModel', None]:
-        """
-            Updates the quantity of an item.
-
-            Args:
-                item_id (int): the id of the item to update
-                quantity (int): the new quantity of the item
-
-            Returns:
-                Union['ItemModel', None]: the updated item object, or None if the item was not found
-
-            Raises:
-                ItemNotFoundError: if the item is not found
-                InvalidItemQuantity: if the quantity is less than 0
-        """
-        item = ndb.Key(cls, item_id).get()
-        if item is None:
-            raise ItemNotFoundError('Invalid item id')
-        if quantity < 0:
-            raise InvalidItemQuantity('Quality must be at least 0')
-        item.quantity = quantity
+        item.description = description if description is not None else item.description
+        item.quantity = quantity if quantity is not None else item.quantity
         item.put()
         return item
 
@@ -228,7 +190,3 @@ class User(UserMixin, ndb.Model, SerializationMixin):
         user.set_password(password)
         key = user.put()
         return key
-
-@login.user_loader
-def load_user(user_id):
-    return User.get_by_id(int(user_id))

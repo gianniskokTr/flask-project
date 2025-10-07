@@ -11,14 +11,14 @@ from app.exceptions import (
     StoreNotFoundError,
     InvalidItemQuantity
 )
+from app.decorators import admin_required
 
 from app.services.bigquery_service import log_item_consumed
 from app.services.cache_service import get_cached_events, refresh_cache
 
-STORE_ATTRIBUTE = 'store'
-
 @bp.route("/store", methods=["POST"])
 @login_required
+@admin_required
 def create_store():
     """
     Args:
@@ -60,32 +60,15 @@ def get_store(store_id):
     if store is None:
         return jsonify({"message": 'Invalid Store Id'}), 404
 
-    page_size = request.args.get("page_size", default=2, type=int)
-    cursor_str = request.args.get("cursor")
-    reverse = request.args.get("reverse", default="false").lower() == "true"
-
-    cursor = ndb.Cursor(urlsafe=cursor_str) if cursor_str else None
     try:
-        items, next_cursor, more = ItemModel.get_by_store(store_id, page_size, cursor, reverse)
-        results = []
-        for item in items:
-            item_dict = item.to_dict_extended(key_attribute=STORE_ATTRIBUTE)
-            item_dict["id"] = item.key.id()
-            results.append(item_dict)
-        store_dict = store.to_dict_extended(key_attribute=None)
-        store_dict["items"] = results
-        store_dict['pagination'] = {
-            "next_cursor": next_cursor.urlsafe().decode("utf-8") if more and next_cursor else None,
-            "prev_cursor": cursor.urlsafe().decode("utf-8") if cursor else None,
-            "has_more": more,
-        }
+        store_dict = store.to_dict_extended()
         return jsonify(store_dict), 200
     except StoreNotFoundError as e:
         return jsonify({"message": str(e)}), 404
 
-@bp.route("/store/<int:store_id>/description", methods=["PATCH"])
+@bp.route("/store/<int:store_id>", methods=["PATCH"])
 @login_required
-def update_store_description(store_id: int):
+def update_store(store_id: int):
     """
     Args:
         store_id: The unique identifier of the store to be updated.
@@ -103,12 +86,13 @@ def update_store_description(store_id: int):
     description = data.get("description")
     try:
         store = StoreModel.update_description(store_id, description)
-        return jsonify(store.to_dict_extended(key_attribute=None)), 200
+        return jsonify(store.to_dict_extended()), 200
     except StoreNotFoundError as e:
         return jsonify({"message": str(e)}), 404
 
 @bp.route("/item", methods=["POST"])
 @login_required
+@admin_required
 def create_item():
     """
     Args:
@@ -157,6 +141,38 @@ def create_item():
     except:
         return jsonify({"message": 'Error occurred while creating item'}), 500
 
+@bp.route("/item", methods=['GET'])
+def get_items():
+    page_size = request.args.get("page_size", default=2, type=int)
+    cursor_str = request.args.get("cursor")
+    reverse = request.args.get("reverse", default="false").lower() == "true"
+
+    cursor = ndb.Cursor(urlsafe=cursor_str) if cursor_str else None
+    query = ItemModel.query()
+
+    if reverse:
+        query = query.order(-ItemModel.created_at)
+    else:
+        query = query.order(ItemModel.created_at)
+
+    items, next_cursor, more = query.fetch_page(page_size, start_cursor=cursor)
+
+    results = []
+    for item in items:
+        item_dict = item.to_dict_extended()
+        item_dict["id"] = item.key.id()
+        results.append(item_dict)
+
+    response = {
+        "items": results,
+        "pagination": {
+            "next_cursor": next_cursor.urlsafe().decode("utf-8") if more and next_cursor else None,
+            "has_more": more,
+            "page_size": page_size,
+        }
+    }
+    return jsonify(response), 200
+
 @bp.route("/item/<int:item_id>", methods=['GET'])
 def get_item(item_id: int):
     """
@@ -177,7 +193,7 @@ def get_item(item_id: int):
 
 @bp.route("/item/<int:item_id>/buy", methods=["POST"])
 @login_required
-def buy_single_item(item_id: int):
+def buy_item(item_id: int):
     """
     Args:
         item_id: The unique identifier of the item to be purchased.
@@ -193,20 +209,21 @@ def buy_single_item(item_id: int):
     """
     try:
         item = ItemModel.consume_item_tx(item_id)
+        # TODO: add task queue to stream event to BigQuery with retry
         log_item_consumed(
             user_id=current_user.get_id(),
             item_id=item.key.id(),
             store_id=item.store.id()
         )
-        return jsonify(item.to_dict_extended(key_attribute=STORE_ATTRIBUTE)), 200
+        return jsonify(item.to_dict_extended()), 200
     except ItemNotFoundError as e:
         return jsonify({"message": str(e)}), 404
     except ItemSoldOutError as e:
         return jsonify({"message": str(e)}), 400
 
-@bp.route("/item/<int:item_id>/quantity", methods=["PATCH"])
+@bp.route("/item/<int:item_id>", methods=["PATCH"])
 @login_required
-def update_item_quantity(item_id: int):
+def update_item(item_id: int):
     """
         Update item quantity.
 
@@ -227,43 +244,14 @@ def update_item_quantity(item_id: int):
     if not data:
         return {"message": 'Invalid JSON'}, 400
     quantity = data.get("quantity")
+    description = data.get("description")
     try:
-        item = ItemModel.update_quantity(item_id, quantity)
-        return jsonify(item.to_dict_extended(key_attribute=STORE_ATTRIBUTE)), 200
+        item = ItemModel.update_item(item_id, description=description, quantity=quantity)
+        return jsonify(item.to_dict_extended()), 200
     except ItemNotFoundError as e:
         return jsonify({"message": str(e)}), 404
     except InvalidItemQuantity as e:
         return jsonify({"message": str(e)}), 404
-
-@bp.route("/item/<int:item_id>/description", methods=["PATCH"])
-@login_required
-def update_item_description(item_id: int):
-    """
-        Update item description.
-
-        Args:
-            item_id (int): item id
-
-        Returns:
-            item: updated item object
-
-        Raises:
-            ItemNotFoundError: if item is not found
-            InvalidRequestError: if request is invalid
-
-        Example:
-            curl -X PATCH -H "Content-Type: application/json" -d '{"description": "updated description"}' http://localhost:8080/item/12345/description
-    """
-    data = request.get_json()
-    if not data:
-        return {"message": 'Invalid JSON'}, 400
-    description = data.get("description")
-    try:
-        item = ItemModel.update_description(item_id, description)
-        return jsonify(item.to_dict_extended(key_attribute=STORE_ATTRIBUTE)), 200
-    except ItemNotFoundError as e:
-        return jsonify({"message": str(e)}), 404
-
 
 @bp.route("/events", methods=["GET"])
 def get_events():

@@ -1,9 +1,9 @@
 from google.appengine.api import memcache
 from google.cloud import bigquery
 
-PROJECT_ID = ""
-DATASET_ID = ""
-TABLE_ID = ""
+PROJECT_ID = "acquired-ripple-473314-j5"
+DATASET_ID = "flask_project_dataser"
+TABLE_ID = "ItemsConsumed"
 
 bq_client = bigquery.Client(project=PROJECT_ID)
 

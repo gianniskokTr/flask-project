@@ -6,8 +6,10 @@ from flask_login import login_user, logout_user, login_required, current_user
 from app.models import User, logger
 from app.auth import bp as auth_bp
 from app.exceptions import UserAlreadyExistsError
+from app.decorators import google_authenticated
 
 @auth_bp.route('/register', methods=['POST'])
+@google_authenticated
 def register():
     data = request.get_json()
     if not data:
