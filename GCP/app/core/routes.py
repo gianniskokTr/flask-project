@@ -240,5 +240,6 @@ def update_item(item_id: int):
 
 @bp.route("/events", methods=["GET"])
 def get_events():
+    # TODO CHANGE THIS TO ANALYTICS
     events = get_cached_events()
     return jsonify(events)
