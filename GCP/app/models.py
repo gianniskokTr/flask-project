@@ -7,7 +7,6 @@ import logging
 from app.exceptions import (
     ItemNotFoundError,
     ItemSoldOutError,
-    OutOfStorageError,
     StoreNotFoundError,
     InvalidItemQuantity,
     UserAlreadyExistsError
@@ -118,23 +117,30 @@ class ItemModel(ndb.Model, SerializationMixin):
 
     @classmethod
     @ndb.transactional()
-    def update_item(cls, item_id: int, description: Optional[str], quantity: Optional[int]) -> Union['ItemModel', None]:
+    def update_item(cls, item_id: int, **kwargs) -> Union['ItemModel', None]:
         """
-            Updates the description of an item.
+        Updates an item by changing its quantity and/or description.
 
-            Args:
-                item_id (int): the id of the item to update
-                description (Optional[str]): the new description of the item
+        Args:
+            item_id (int): the id of the item to update
+            **kwargs: a dictionary containing the new values for the item
+                quantity (int): the new quantity of the item, or None to leave unchanged
+                description (str): the new description of the item, or None to leave unchanged
 
-            Returns:
-                Union['ItemModel', None]: the updated item object, or None if the item was not found
+        Returns:
+            Union['ItemModel', None]: the updated item object, or None if the item was not found
 
-            Raises:
-                ItemNotFoundError: if the item is not found
+        Raises:
+            ItemNotFoundError: if the item is not found
+            InvalidItemQuantity: if the new quantity is invalid
         """
         item = ndb.Key(cls, item_id).get()
+        quantity = kwargs.get('quantity')
+        description = kwargs.get('description')
         if item is None:
             raise ItemNotFoundError('Invalid item id')
+        if quantity is not None and quantity < 0:
+            raise InvalidItemQuantity('Invalid item quantity')
         item.description = description if description is not None else item.description
         item.quantity = quantity if quantity is not None else item.quantity
         item.put()

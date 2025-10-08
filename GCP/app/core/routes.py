@@ -146,18 +146,27 @@ def get_items():
     page_size = request.args.get("page_size", default=2, type=int)
     cursor_str = request.args.get("cursor")
     reverse = request.args.get("reverse", default="false").lower() == "true"
+    store_id = request.args.get("store_id")
 
     cursor = ndb.Cursor(urlsafe=cursor_str) if cursor_str else None
-    query = ItemModel.query()
-
-    if reverse:
-        query = query.order(-ItemModel.created_at)
-    else:
-        query = query.order(ItemModel.created_at)
-
-    items, next_cursor, more = query.fetch_page(page_size, start_cursor=cursor)
-
     results = []
+
+    if store_id is None:
+        query = ItemModel.query()
+
+        if reverse:
+            query = query.order(-ItemModel.created_at)
+        else:
+            query = query.order(ItemModel.created_at)
+
+        items, next_cursor, more = query.fetch_page(page_size, start_cursor=cursor)
+
+    else:
+        try:
+            items, next_cursor, more = ItemModel.get_by_store(int(store_id), page_size, cursor, reverse)
+        except StoreNotFoundError as e:
+            return jsonify({"message": str(e)}), 404
+
     for item in items:
         item_dict = item.to_dict_extended()
         item_dict["id"] = item.key.id()
@@ -172,6 +181,7 @@ def get_items():
         }
     }
     return jsonify(response), 200
+
 
 @bp.route("/item/<int:item_id>", methods=['GET'])
 def get_item(item_id: int):
@@ -225,20 +235,8 @@ def buy_item(item_id: int):
 @login_required
 def update_item(item_id: int):
     """
-        Update item quantity.
-
-        Args:
-            item_id (int): item id
-
-        Returns:
-            item: updated item object
-
-        Raises:
-            ItemNotFoundError: if item is not found
-            InvalidRequestError: if request is invalid
-
-        Example:
-            curl -X PATCH -H "Content-Type: application/json" -d '{"quantity": 10}' http://localhost:8080/item/12345/quantity
+    Args:
+        item_id: The unique identifier of the item to be updated.
     """
     data = request.get_json()
     if not data:
