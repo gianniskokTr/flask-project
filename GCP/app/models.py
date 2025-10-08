@@ -92,7 +92,7 @@ class ItemModel(ndb.Model, SerializationMixin):
 
     @classmethod
     @ndb.transactional()
-    def consume_item_tx(cls, item_id: int) -> Union['ItemModel', None]:
+    def consume_item(cls, item_id: int) -> Union['ItemModel', None]:
         """
             Consumes an item by decrementing its quantity.
 

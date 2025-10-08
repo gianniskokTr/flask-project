@@ -25,9 +25,3 @@ def get_cached_events():
         events = fetch_events_from_bq()
         memcache.set(CACHE_KEY, events, time=6*3600)
     return events
-
-
-def refresh_cache():
-    events = fetch_events_from_bq()
-    memcache.set(CACHE_KEY, events, time=6*3600)
-    return events

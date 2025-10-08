@@ -11,10 +11,12 @@ login.init_app(app)
 
 from app.core import bp as main_bp
 from app.auth import bp as auth_bp
+from app.tasks import bp as task_bp
 from app.models import User
 
 app.register_blueprint(main_bp)
 app.register_blueprint(auth_bp)
+app.register_blueprint(task_bp)
 
 @app.errorhandler(Exception)
 def handle_generic_exception(error):

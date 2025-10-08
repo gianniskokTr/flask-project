@@ -11,11 +11,11 @@ TABLE_ID = "ItemsConsumed"
 bq_client = bigquery.Client(project=PROJECT_ID)
 
 
-def log_item_consumed(user_id: int, store_id: int, item_id: int):
+def log_item_consumed(user_id: int, store_id: int, item_id: int, timestamp: datetime.datetime):
     table_ref = f"{PROJECT_ID}.{DATASET_ID}.{TABLE_ID}"
 
     row = {
-        "timestamp": datetime.datetime.now().isoformat(),
+        "timestamp": timestamp,
         "user_id": user_id,
         "store_id": store_id,
         "item_id": item_id,

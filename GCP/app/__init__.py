@@ -17,3 +17,4 @@ def create_app():
 from app import exceptions
 from app import models
 from app import decorators
+from app import tasks

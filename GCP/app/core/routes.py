@@ -1,6 +1,7 @@
 from flask import jsonify, request
 from google.appengine.ext import ndb
 from flask_login import login_required, current_user
+import datetime
 
 from app.models import StoreModel, ItemModel, logger
 from app.core import bp
@@ -14,7 +15,8 @@ from app.exceptions import (
 from app.decorators import admin_required
 
 from app.services.bigquery_service import log_item_consumed
-from app.services.cache_service import get_cached_events, refresh_cache
+from app.services.cache_service import get_cached_events
+from app.services.task_service import enqueue_task
 
 @bp.route("/stores", methods=["POST"])
 @login_required
@@ -148,8 +150,8 @@ def get_items():
     query = ItemModel.query()
 
     if store_id:
-        store_model = StoreModel.get_by_id(int(store_id))
-        query = query.filter(ItemModel.store == store_model.key)
+        store_key = ndb.Key(StoreModel, int(store_id))
+        query = query.filter(ItemModel.store == store_key)
 
     order = -ItemModel.created_at if reverse else ItemModel.created_at
     query = query.order(order)
@@ -206,13 +208,9 @@ def buy_item(item_id: int):
         or 400 if the item is sold out.
     """
     try:
-        item = ItemModel.consume_item_tx(item_id)
-        # TODO: add task queue to stream event to BigQuery with retry
-        log_item_consumed(
-            user_id=current_user.get_id(),
-            item_id=item.key.id(),
-            store_id=item.store.id()
-        )
+        item = ItemModel.consume_item(item_id)
+        enqueue_task(item_id=item.key.id(), store_id=item.store.id(), user_id=current_user.get_id(), timestamp=datetime.datetime.now().isoformat())
+
         return jsonify(item.to_dict_extended()), 200
     except ItemNotFoundError as e:
         return jsonify({"message": str(e)}), 404
