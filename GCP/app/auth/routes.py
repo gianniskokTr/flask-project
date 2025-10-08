@@ -50,7 +50,7 @@ def logout():
     logout_user()
     return jsonify({"message": 'Logout successful'}), 200
 
-@auth_bp.route('/user', methods=['GET'])
+@auth_bp.route('/users', methods=['GET'])
 @login_required
 def get_user():
     return jsonify({"user": current_user.to_dict()}), 200

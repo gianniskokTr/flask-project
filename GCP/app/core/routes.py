@@ -16,7 +16,7 @@ from app.decorators import admin_required
 from app.services.bigquery_service import log_item_consumed
 from app.services.cache_service import get_cached_events, refresh_cache
 
-@bp.route("/store", methods=["POST"])
+@bp.route("/stores", methods=["POST"])
 @login_required
 @admin_required
 def create_store():
@@ -40,13 +40,10 @@ def create_store():
         return jsonify({"message": "Store name is required"}), 400
 
     store = StoreModel(name=name, description=description)
-    try:
-        key = store.put()
-        return jsonify({"model": key.kind(), "key_id": key.id()}), 201
-    except:
-        return jsonify({"message": 'Error occurred while creating store'}), 500
+    key = store.put()
+    return jsonify({"model": key.kind(), "key_id": key.id()}), 201
 
-@bp.route("/store/<int:store_id>", methods=['GET'])
+@bp.route("/stores/<int:store_id>", methods=['GET'])
 def get_store(store_id):
     """
     Args:
@@ -66,7 +63,7 @@ def get_store(store_id):
     except StoreNotFoundError as e:
         return jsonify({"message": str(e)}), 404
 
-@bp.route("/store/<int:store_id>", methods=["PATCH"])
+@bp.route("/stores/<int:store_id>", methods=["PUT"])
 @login_required
 @admin_required
 def update_store(store_id: int):
@@ -91,7 +88,7 @@ def update_store(store_id: int):
     except StoreNotFoundError as e:
         return jsonify({"message": str(e)}), 404
 
-@bp.route("/item", methods=["POST"])
+@bp.route("/items", methods=["POST"])
 @login_required
 @admin_required
 def create_item():
@@ -129,20 +126,17 @@ def create_item():
     if store_key.get() is None:
         return jsonify({"message": "Invalid store_id"}), 404
 
-    try:
-        item = ItemModel(
-            name=name,
-            description=description,
-            price=price,
-            store=store_key,
-            quantity=quantity
-        )
-        key = item.put()
-        return jsonify({"model": key.kind(), "key_id": key.id()}), 201
-    except:
-        return jsonify({"message": 'Error occurred while creating item'}), 500
+    item = ItemModel(
+        name=name,
+        description=description,
+        price=price,
+        store=store_key,
+        quantity=quantity
+    )
+    key = item.put()
+    return jsonify({"model": key.kind(), "key_id": key.id()}), 201
 
-@bp.route("/item", methods=['GET'])
+@bp.route("/items", methods=['GET'])
 def get_items():
     page_size = request.args.get("page_size", default=2, type=int)
     cursor_str = request.args.get("cursor")
@@ -151,22 +145,16 @@ def get_items():
 
     cursor = ndb.Cursor(urlsafe=cursor_str) if cursor_str else None
     results = []
+    query = ItemModel.query()
 
-    if store_id is None:
-        query = ItemModel.query()
+    if store_id:
+        store_model = StoreModel.get_by_id(int(store_id))
+        query = query.filter(ItemModel.store == store_model.key)
 
-        if reverse:
-            query = query.order(-ItemModel.created_at)
-        else:
-            query = query.order(ItemModel.created_at)
+    order = -ItemModel.created_at if reverse else ItemModel.created_at
+    query = query.order(order)
 
-        items, next_cursor, more = query.fetch_page(page_size, start_cursor=cursor)
-
-    else:
-        try:
-            items, next_cursor, more = ItemModel.get_by_store(int(store_id), page_size, cursor, reverse)
-        except StoreNotFoundError as e:
-            return jsonify({"message": str(e)}), 404
+    items, next_cursor, more = query.fetch_page(page_size, start_cursor=cursor)
 
     for item in items:
         item_dict = item.to_dict_extended()
@@ -183,8 +171,7 @@ def get_items():
     }
     return jsonify(response), 200
 
-
-@bp.route("/item/<int:item_id>", methods=['GET'])
+@bp.route("/items/<int:item_id>", methods=['GET'])
 def get_item(item_id: int):
     """
     Args:
@@ -202,7 +189,7 @@ def get_item(item_id: int):
     item_dict["store"] = item.store.id()
     return jsonify(item_dict)
 
-@bp.route("/item/<int:item_id>/buy", methods=["POST"])
+@bp.route("/items/<int:item_id>/buy", methods=["POST"])
 @login_required
 def buy_item(item_id: int):
     """
@@ -232,7 +219,7 @@ def buy_item(item_id: int):
     except ItemSoldOutError as e:
         return jsonify({"message": str(e)}), 400
 
-@bp.route("/item/<int:item_id>", methods=["PATCH"])
+@bp.route("/items/<int:item_id>", methods=["PUT"])
 @login_required
 @admin_required
 def update_item(item_id: int):
@@ -257,9 +244,3 @@ def update_item(item_id: int):
 def get_events():
     events = get_cached_events()
     return jsonify(events)
-
-# Endpoint for cron
-@bp.route("/tasks/update_cache", methods=["GET"])
-def update_cache_task():
-    events = refresh_cache()
-    return jsonify({"status": "cache updated", "count": len(events)})
