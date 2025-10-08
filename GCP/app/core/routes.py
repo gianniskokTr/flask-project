@@ -68,6 +68,7 @@ def get_store(store_id):
 
 @bp.route("/store/<int:store_id>", methods=["PATCH"])
 @login_required
+@admin_required
 def update_store(store_id: int):
     """
     Args:
@@ -233,6 +234,7 @@ def buy_item(item_id: int):
 
 @bp.route("/item/<int:item_id>", methods=["PATCH"])
 @login_required
+@admin_required
 def update_item(item_id: int):
     """
     Args:
