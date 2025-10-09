@@ -1,6 +1,7 @@
 from flask import jsonify, request
 from google.appengine.ext import ndb
 from flask_login import login_required, current_user
+from google.appengine.api import memcache
 import datetime
 
 from app.models import StoreModel, ItemModel, logger
@@ -13,8 +14,7 @@ from app.exceptions import (
     InvalidItemPrice
 )
 from app.decorators import admin_required
-
-from app.services.cache_service import get_cached_analytics
+from app.services.bigquery_service import fetch_analytics_from_bq
 from app.services.task_service import enqueue_task
 
 @bp.route("/stores", methods=["POST"])
@@ -323,6 +323,11 @@ def update_item(item_id: int):
 @bp.route("/analytics", methods=["GET"])
 @login_required
 def get_analytics():
-    analytics = get_cached_analytics()
+    cache_key = "cached_analytics"
+    analytics = memcache.get(cache_key)
+    if not analytics: #fallback if cache not yet initiated
+        analytics = fetch_analytics_from_bq()
+        memcache.set(cache_key, analytics, time=3600*24)
     return jsonify(analytics), 200
+
 
