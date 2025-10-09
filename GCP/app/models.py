@@ -9,7 +9,8 @@ from app.exceptions import (
     ItemSoldOutError,
     StoreNotFoundError,
     InvalidItemQuantity,
-    UserAlreadyExistsError
+    UserAlreadyExistsError,
+    InvalidItemPrice
 )
 
 
@@ -40,24 +41,34 @@ class StoreModel(ndb.Model, SerializationMixin):
 
     @classmethod
     @ndb.transactional()
-    def update_description(cls, store_id: int, description: Optional[str]) -> Union['StoreModel', None]:
+    def update_store(cls, store_id: int, **kwargs) -> Union['StoreModel', None]:
+
+
         """
-            Updates the description of a store.
+        Updates a store by changing its description and/or name.
 
-            Args:
-                store_id (int): the id of the store to update
-                description (Optional[str]): the new description of the store
+        Args:
+            store_id (int): the id of the store to update
+            **kwargs: a dictionary containing the new values for the store
+                description (str): the new description of the store, or None to leave unchanged
+                name (str): the new name of the store, or None to leave unchanged
 
-            Returns:
-                Union['StoreModel', None]: the updated store object, or None if the store was not found
+        Returns:
+            Union['StoreModel', None]: the updated store object, or None if the store was not found
 
-            Raises:
-                StoreNotFoundError: if the store is not found
+        Raises:
+            StoreNotFoundError: if the store is not found
         """
         store = ndb.Key(cls, store_id).get()
         if store is None:
             raise StoreNotFoundError("Invalid store id")
-        store.description = description
+
+        excluded_attrs = {'created_at', 'key'}
+
+        for attr_name, attr_value in kwargs.items():
+            if  attr_name not in excluded_attrs and hasattr(store, attr_name) :
+                setattr(store, attr_name, attr_value)
+
         store.put()
         return store
 
@@ -68,7 +79,7 @@ class ItemModel(ndb.Model, SerializationMixin):
     description = ndb.TextProperty()
     created_at = ndb.DateTimeProperty(auto_now_add=True)
     store = ndb.KeyProperty(kind=StoreModel, required=True)
-    quantity = ndb.IntegerProperty(required=True)
+    quantity = ndb.IntegerProperty(required=True, default=0)
 
     @classmethod
     def get_by_id(cls, item_id: int) -> Union['ItemModel', None]:
@@ -119,30 +130,39 @@ class ItemModel(ndb.Model, SerializationMixin):
     @ndb.transactional()
     def update_item(cls, item_id: int, **kwargs) -> Union['ItemModel', None]:
         """
-        Updates an item by changing its quantity and/or description.
+        Updates an item with the given attributes.
 
         Args:
             item_id (int): the id of the item to update
-            **kwargs: a dictionary containing the new values for the item
-                quantity (int): the new quantity of the item, or None to leave unchanged
-                description (str): the new description of the item, or None to leave unchanged
+            **kwargs: the attributes to update, along with their values
 
         Returns:
             Union['ItemModel', None]: the updated item object, or None if the item was not found
 
         Raises:
             ItemNotFoundError: if the item is not found
-            InvalidItemQuantity: if the new quantity is invalid
+            InvalidItemQuantity: if the quantity is < 0
+            InvalidItemPrice: if the price is <= 0
         """
         item = ndb.Key(cls, item_id).get()
-        quantity = kwargs.get('quantity')
-        description = kwargs.get('description')
+
         if item is None:
             raise ItemNotFoundError('Invalid item id')
-        if quantity is not None and quantity < 0:
-            raise InvalidItemQuantity('Invalid item quantity')
-        item.description = description if description is not None else item.description
-        item.quantity = quantity if quantity is not None else item.quantity
+
+        excluded_attrs = {'created_at', 'key', 'name', 'store'}
+
+        validations = {
+            'quantity': lambda x: x >= 0 or InvalidItemQuantity('Quantity must be >= 0'),
+            'price': lambda x: x > 0 or InvalidItemPrice('Price must be > 0'),
+        }
+
+        for attr_name, attr_value in kwargs.items():
+            if  attr_name not in excluded_attrs and hasattr(item, attr_name):
+                if attr_name in validations:
+                    validations_result = validations[attr_name](attr_value)
+                    if isinstance(validations_result, Exception):
+                        raise validations_result
+                setattr(item, attr_name, attr_value)
         item.put()
         return item
 

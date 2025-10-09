@@ -7,6 +7,9 @@ class ItemSoldOutError(Exception):
 class InvalidItemQuantity(Exception):
     pass
 
+class InvalidItemPrice(Exception):
+    pass
+
 class OutOfStorageError(Exception):
     pass
 

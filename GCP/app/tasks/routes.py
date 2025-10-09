@@ -12,14 +12,12 @@ def log_item_consumed_task():
     Task handler for logging events to BigQuery.
     Called asynchronously by App Engine Task Queue.
     """
-    # Verify request is from task queue
     task_name = request.headers.get('X-AppEngine-TaskName')
     if not task_name:
         logger.warning("Request not from task queue")
         return jsonify({"error": "Unauthorized"}), 401
 
     try:
-        # Parse JSON payload
         data = json.loads(request.data)
 
         user_id = data.get('user_id')

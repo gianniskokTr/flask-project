@@ -3,29 +3,18 @@ import json
 
 from app.models import logger
 
-def enqueue_task(**kwargs):
-    user_id = kwargs.get("user_id")
-    item_id = kwargs.get("item_id")
-    store_id = kwargs.get("store_id")
-    timestamp = kwargs.get("timestamp")
+def enqueue_task(target: str, queue_name: str, payload: dict):
 
     try:
-        payload = json.dumps({
-            'user_id': user_id,
-            'item_id': item_id,
-            'store_id': store_id,
-            'timestamp': timestamp
-        })
-
         task = taskqueue.add(
-            url='/tasks/log_item_consumed',
-            payload=payload,
+            url=target,
+            payload=json.dumps(payload),
             method='POST',
-            queue_name='log-item-consumed'
+            queue_name=queue_name
         )
 
-        logger.info(f"Enqueued task for item {item_id} consumed by user {user_id} in store {store_id} at {timestamp}")
+        logger.info(f"Enqueued task for {str(payload)}")
         return task
-    except Exception as e:
-        logger.error(f"Error enqueuing task for item {item_id} consumed by user {user_id} in store {store_id}: {e} at {timestamp}")
+    except Exception:
+        logger.error(f"Error enqueuing task for {str(payload)}")
         return None
