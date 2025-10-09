@@ -52,6 +52,11 @@ def create_store():
     name = data.get("name")
     description = data.get("description")
 
+    if not name:
+        return jsonify({"message": "Invalid store name"}), 400
+    if not description:
+        return jsonify({"message": "Invalid store description"}), 400
+
     store = StoreModel(name=name, description=description)
     key = store.put()
     return jsonify({"model": key.kind(), "key_id": key.id()}), 201
