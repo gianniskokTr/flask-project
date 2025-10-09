@@ -14,7 +14,7 @@ from app.exceptions import (
 )
 from app.decorators import admin_required
 
-from app.services.cache_service import get_cached_events
+from app.services.cache_service import get_cached_analytics
 from app.services.task_service import enqueue_task
 
 @bp.route("/stores", methods=["POST"])
@@ -49,24 +49,25 @@ def create_store():
     if not data:
         return jsonify({"message": 'Invalid JSON'}), 400
 
-    try:
-        store = StoreModel(**data)
-        key = store.put()
-        return jsonify({"model": key.kind(), "key_id": key.id()}), 201
-    except Exception as e:
-        return jsonify({"message": str(e)}), 400
+    name = data.get("name")
+    description = data.get("description")
+
+    store = StoreModel(name=name, description=description)
+    key = store.put()
+    return jsonify({"model": key.kind(), "key_id": key.id()}), 201
+
 
 
 @bp.route("/stores/<int:store_id>", methods=['GET'])
 @login_required
 def get_store(store_id):
     """
-    Args:
-        store_id: The unique identifier of the store to be retrieved.
+        Args:
+            store_id: The unique identifier of the store to be retrieved.
 
-    Returns:
-        Response object with the store's extended details in JSON format and an HTTP status code 200 on success.
-        Returns an error message in JSON format with an HTTP status code 404 if the store is not found.
+        Returns:
+            Response object with the store's extended details in JSON format and an HTTP status code 200 on success.
+            Returns an error message in JSON format with an HTTP status code 404 if the store is not found.
     """
     store = StoreModel.get_by_id(store_id)
     if store is None:
@@ -80,15 +81,15 @@ def get_store(store_id):
 @admin_required
 def update_store(store_id: int):
     """
-    Args:
-        store_id: The unique identifier of the store to be updated.
+        Args:
+            store_id: The unique identifier of the store to be updated.
 
-    Raises:
-        StoreNotFoundError: If the store with the given ID does not exist.
+        Raises:
+            StoreNotFoundError: If the store with the given ID does not exist.
 
-    Returns:
-        Response object with the store's extended details in JSON format and an HTTP status code 200 on success.
-        Returns an error message in JSON format with an HTTP status code 404 if the store is not found.
+        Returns:
+            Response object with the store's extended details in JSON format and an HTTP status code 200 on success.
+            Returns an error message in JSON format with an HTTP status code 404 if the store is not found.
     """
     data = request.get_json()
     if not data:
@@ -109,53 +110,79 @@ def create_item():
     Creates a new item with the provided data.
 
     Request Body:
-        JSON object containing item attributes. 'name' and 'price' are required.
+        JSON object containing item attributes. 'name', 'price', and 'store_id' are required.
 
     Returns:
         Response object with the item's key details in JSON format and an HTTP status code 201 on success.
         Returns an error message in JSON format with an HTTP status code 400 for invalid input.
+        Returns an error message in JSON format with an HTTP status code 404 if the store is not found.
 
     Example:
         Request:
             POST /items
             {
                 "name": "New Item",
-                "price": 10.99
+                "description": "A new item",
+                "price": 10.99,
+                "quantity": 10,
+                "store_id": 12345
             }
         Response:
             201 Created
             {
                 "model": "ItemModel",
-                "key_id": 12345
+                "key_id": 67890
             }
     """
     data = request.get_json()
     if not data:
         return jsonify({"message": 'Invalid JSON'}), 400
 
-    try:
-        item = ItemModel(**data)
-        key = item.put()
-        return jsonify({"model": key.kind(), "key_id": key.id()}), 201
-    except Exception as e:
-        return jsonify({"message": str(e)}), 400
+    name = data.get("name")
+    description = data.get("description")
+    price =  data.get("price")
+    quantity = data.get("quantity", 0)
+    store_id = data.get("store_id")
+
+    if not name:
+        return jsonify({"message": "Invalid item name"}), 400
+    if not price or price <= 0:
+        return jsonify({"message": "Invalid item price"}), 400
+    if not store_id:
+        return jsonify({"message": "store_id is required"}), 400
+    if quantity < 0:
+        return jsonify({"message": "Invalid item quantity"}), 400
+
+    store_key = StoreModel.get_by_id(store_id)
+    if store_key is None:
+        return jsonify({"message": "Store not found"}), 404
+
+    item = ItemModel(
+        name=name,
+        description=description,
+        price=price,
+        store=store_key.key,
+        quantity=quantity
+    )
+    key = item.put()
+    return jsonify({"model": key.kind(), "key_id": key.id()}), 201
 
 
 @bp.route("/items", methods=['GET'])
 @login_required
 def get_items():
     """
-    Retrieves a list of items based on the provided query parameters.
+        Retrieves a list of items based on the provided query parameters.
 
-    Query Parameters:
-        page_size: Number of items per page (default: 2).
-        cursor: Cursor for pagination (default: None).
-        reverse: Boolean indicating whether to reverse the order of results (default: False).
-        store_id: ID of the store to filter items by (default: None).
+        Query Parameters:
+            page_size: Number of items per page (default: 2).
+            cursor: Cursor for pagination (default: None).
+            reverse: Boolean indicating whether to reverse the order of results (default: False).
+            store_id: ID of the store to filter items by (default: None).
 
-    Returns:
-        Response object with a list of items in JSON format and an HTTP status code 200 on success.
-        Returns an error message in JSON format with an HTTP status code 404 if the store is not found.
+        Returns:
+            Response object with a list of items in JSON format and an HTTP status code 200 on success.
+            Returns an error message in JSON format with an HTTP status code 404 if the store is not found.
     """
     page_size = request.args.get("page_size", default=2, type=int)
     cursor_str = request.args.get("cursor")
@@ -194,12 +221,12 @@ def get_items():
 @login_required
 def get_item(item_id: int):
     """
-    Args:
-        item_id: The unique identifier of the item to be retrieved.
+        Args:
+            item_id: The unique identifier of the item to be retrieved.
 
-    Returns:
-        Response object with the item's extended details in JSON format and an HTTP status code 200 on success.
-        Returns an error message in JSON format with an HTTP status code 404 if the item is not found.
+        Returns:
+            Response object with the item's extended details in JSON format and an HTTP status code 200 on success.
+            Returns an error message in JSON format with an HTTP status code 404 if the item is not found.
     """
     item = ndb.Key(ItemModel, item_id).get()
     if item is None:
@@ -212,17 +239,17 @@ def get_item(item_id: int):
 @login_required
 def buy_item(item_id: int):
     """
-    Args:
-        item_id: The unique identifier of the item to be purchased.
+        Args:
+            item_id: The unique identifier of the item to be purchased.
 
-    Raises:
-        ItemNotFoundError: If the item with the given ID does not exist.
-        ItemSoldOutError: If the item is sold out and cannot be purchased.
+        Raises:
+            ItemNotFoundError: If the item with the given ID does not exist.
+            ItemSoldOutError: If the item is sold out and cannot be purchased.
 
-    Returns:
-        Response object with the item's extended details in JSON format and an HTTP status code 200 on success.
-        Returns an error message in JSON format with an HTTP status code 404 if the item is not found,
-        or 400 if the item is sold out.
+        Returns:
+            Response object with the item's extended details in JSON format and an HTTP status code 200 on success.
+            Returns an error message in JSON format with an HTTP status code 404 if the item is not found,
+            or 400 if the item is sold out.
     """
     try:
         item = ItemModel.consume_item(item_id)
@@ -245,8 +272,35 @@ def buy_item(item_id: int):
 @admin_required
 def update_item(item_id: int):
     """
-    Args:
-        item_id: The unique identifier of the item to be updated.
+        Updates an item with the given attributes.
+
+        Args:
+            item_id (int): the id of the item to update
+
+        Request Body:
+            JSON object containing item attributes to update. 'description', 'price', 'quantity' are valid attributes.
+
+        Returns:
+            Response object with the updated item's extended details in JSON format and an HTTP status code 200 on success.
+            Returns an error message in JSON format with an HTTP status code 404 if the item is not found.
+            Returns an error message in JSON format with an HTTP status code 400 for invalid input.
+
+        Example:
+            Request:
+                PUT /items/123
+                {
+                    "description": "New Item Desc",
+                    "price": 10.99,
+                    "quantity": 10
+                }
+            Response:
+                200 OK
+                {
+                    "description": "New Item Desc",
+                    "price": 10.99,
+                    "quantity": 10,
+                    ...
+                }
     """
     data = request.get_json()
     if not data:
@@ -261,9 +315,9 @@ def update_item(item_id: int):
     except InvalidItemPrice as e:
         return jsonify({"message": str(e)}), 400
 
-@bp.route("/events", methods=["GET"])
+@bp.route("/analytics", methods=["GET"])
 @login_required
-def get_events():
-    # TODO CHANGE THIS TO ANALYTICS
-    events = get_cached_events()
-    return jsonify(events)
+def get_analytics():
+    analytics = get_cached_analytics()
+    return jsonify(analytics), 200
+

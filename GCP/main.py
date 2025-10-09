@@ -4,7 +4,6 @@ from app import create_app
 
 
 login = LoginManager()
-login.login_view = 'auth.login'
 app = create_app()
 
 login.init_app(app)
