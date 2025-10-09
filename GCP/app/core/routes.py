@@ -324,8 +324,9 @@ def update_item(item_id: int):
 @login_required
 def get_analytics():
     cache_key = "cached_analytics"
+    force_fresh = request.args.get("force_fresh", "false")
     analytics = memcache.get(cache_key)
-    if not analytics: #fallback if cache not yet initiated
+    if force_fresh.lower() == "true" or not analytics: #fallback if cache not yet initiated
         analytics = fetch_analytics_from_bq()
         memcache.set(cache_key, analytics, time=3600*24)
     return jsonify(analytics), 200
